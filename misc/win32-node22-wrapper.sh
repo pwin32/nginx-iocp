@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: $0 script.js [args ...]" >&2
+    exit 2
+fi
+
+node_win=node.exe
+msys_bash=${MSYS_BASH:-/usr/bin/bash}
+script=$1
+shift
+
+if [ ! -x "$node_win" ]; then
+    echo "Windows Node.js binary is not executable: $node_win" >&2
+    exit 2
+fi
+
+if [ ! -x "$msys_bash" ]; then
+    echo "MSYS2 bash is not executable: $msys_bash" >&2
+    exit 2
+fi
+
+output=${WIN32_NODE_LOG:-}
+if [ -z "$output" ]; then
+    output=$(mktemp /mnt/z/win32-node.XXXXXX.log)
+fi
+
+case "$output" in
+    /mnt/z/*) ;;
+    *) echo "WIN32_NODE_LOG must be below /mnt/z" >&2; exit 2 ;;
+esac
+
+mkdir -p "$(dirname "$output")"
+: >"$output"
+
+export WSLENV="${WSLENV:+$WSLENV:}BENCH_TLS:READ_PAUSE_MS"
+
+node_mixed=$(wslpath -m "$node_win")
+script_mixed=$(wslpath -m "$script")
+output_mixed=$(wslpath -m "$output")
+printf -v command '%q ' "$node_mixed" "$script_mixed" "$@"
+printf -v output_quoted '%q' "$output_mixed"
+command+=" >$output_quoted 2>&1"
+
+if ! "$msys_bash" -l -c \
+    "export MSYSTEM=MINGW64; export MSYS_NO_PATHCONV=1; source /etc/profile >/dev/null 2>&1; $command"
+then
+    sed -n '1,240p' "$output" >&2
+    exit 1
+fi
