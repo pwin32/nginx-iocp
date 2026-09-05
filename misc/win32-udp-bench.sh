@@ -161,7 +161,7 @@ get_free_port() {
         | tr -d '\r'
 }
 
-prefix=$(mktemp -d /mnt/z/nginx-iocp-udp-bench.XXXXXX)
+prefix=$(mktemp -d)
 prefix_win=$(wslpath -m "$prefix")
 port=$(get_free_port)
 started=0
@@ -177,9 +177,7 @@ cleanup() {
     fi
 
     if [ "${KEEP_ARTIFACTS:-0}" != 1 ]; then
-        case "$prefix" in
-            /mnt/z/nginx-iocp-udp-bench.*) rm -rf -- "$prefix" ;;
-        esac
+        rm -rf -- "$prefix"
     fi
 }
 

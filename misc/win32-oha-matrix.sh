@@ -10,7 +10,7 @@ fi
 binary=$(realpath "$1")
 label=${2:-$(basename "$(dirname "$binary")")}
 script_dir=$(cd "$(dirname "$0")" && pwd)
-results_root=${RESULTS_DIR:-/mnt/z/nginx-oha-matrix-20260819}
+results_root=${RESULTS_DIR:-./nginx-oha-matrix}
 repeats=${REPEATS:-6}
 max_attempts=${MAX_ATTEMPTS:-2}
 resume=${RESUME:-0}
@@ -43,8 +43,8 @@ if [ "${#conditions[@]}" -lt 2 ]; then
 fi
 
 case "$results_root" in
-    /mnt/z/*) ;;
-    *) echo "RESULTS_DIR must be below /mnt/z" >&2; exit 2 ;;
+    /*) ;;
+    *) echo "RESULTS_DIR must be an absolute path" >&2; exit 2 ;;
 esac
 
 case "$repeats" in
@@ -152,7 +152,7 @@ run_one() {
              "(connections=$connections clients=$clients, " \
              "attempt $attempt/$max_attempts)" >&2
 
-        if RESULTS_DIR="$attempt_dir" BENCH_SCRATCH_ROOT=/mnt/z \
+        if RESULTS_DIR="$attempt_dir" BENCH_SCRATCH_ROOT="${TMPDIR:-/tmp}" \
            MASTER_PROCESS=on DAEMON=off BENCH_DIRECT_QUIT=0 \
            BENCH_PATHS="$paths" WORKER_PROCESSES="$workers" \
            CONNECTIONS="$connections" CLIENT_PROCESSES="$clients" \

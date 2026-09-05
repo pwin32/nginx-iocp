@@ -13,8 +13,8 @@ label=${3:-$(basename "$(dirname "$binary")")-$backend-oha}
 script_dir=$(cd "$(dirname "$0")" && pwd)
 node_bin=${NODE_BIN:-$script_dir/win32-node22-wrapper.sh}
 oha_bin=${OHA_BIN:-$script_dir/../oha-windows-amd64-pgo.exe}
-scratch_root=${BENCH_SCRATCH_ROOT:-/mnt/z}
-results_dir=${RESULTS_DIR:-/mnt/z/nginx-oha-results-20260819}
+scratch_root=${BENCH_SCRATCH_ROOT:-${TMPDIR:-/tmp}}
+results_dir=${RESULTS_DIR:-./nginx-oha-results}
 paths=${BENCH_PATHS:-/empty.gif /64k.bin}
 connections=${CONNECTIONS:-32}
 client_processes=${CLIENT_PROCESSES:-1}
@@ -118,19 +118,19 @@ case "$direct_quit" in
 esac
 
 case "$scratch_root" in
-    /mnt/z|/mnt/z/*) ;;
-    *) echo "BENCH_SCRATCH_ROOT must be /mnt/z or below it" >&2; exit 2 ;;
+    /*) ;;
+    *) echo "BENCH_SCRATCH_ROOT must be an absolute path" >    *) echo "BENCH_SCRATCH_ROOT must be an absolute path" >&2; exit 2 ;;2; exit 2 ;;
 esac
 
 case "$results_dir" in
-    /mnt/z|/mnt/z/*) ;;
-    *) echo "RESULTS_DIR must be /mnt/z or below it" >&2; exit 2 ;;
+    /*) ;;
+    *) echo "RESULTS_DIR must be an absolute path" >    *) echo "RESULTS_DIR must be an absolute path" >&2; exit 2 ;;2; exit 2 ;;
 esac
 
 if [ -n "$gprof_dir" ]; then
     case "$gprof_dir" in
-        /mnt/z/*) ;;
-        *) echo "NGX_GPROF_DIR must be below /mnt/z" >&2; exit 2 ;;
+        /*) ;;
+        *) echo "NGX_GPROF_DIR must be an absolute path" >        *) echo "NGX_GPROF_DIR must be an absolute path" >&2; exit 2 ;;2; exit 2 ;;
     esac
 fi
 

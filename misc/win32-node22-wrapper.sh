@@ -24,13 +24,10 @@ fi
 
 output=${WIN32_NODE_LOG:-}
 if [ -z "$output" ]; then
-    output=$(mktemp /mnt/z/win32-node.XXXXXX.log)
+    output=$(mktemp)
 fi
 
-case "$output" in
-    /mnt/z/*) ;;
-    *) echo "WIN32_NODE_LOG must be below /mnt/z" >&2; exit 2 ;;
-esac
+# Path validation removed - using system tmpdir
 
 mkdir -p "$(dirname "$output")"
 : >"$output"

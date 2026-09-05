@@ -16,7 +16,7 @@ node_bin=${NODE_BIN:-/home/user/bin/node}
 node_output_file=${NODE_OUTPUT_FILE:-0}
 aggregate_node_bin=${FILTER_NODE_BIN:-/home/user/bin/node}
 results_dir=${RESULTS_DIR:-$PWD/bench-results}
-scratch_root=${BENCH_SCRATCH_ROOT:-/mnt/z}
+scratch_root=${BENCH_SCRATCH_ROOT:-${TMPDIR:-/tmp}}
 protocol=${BENCH_PROTOCOL:-http}
 connections=${CONNECTIONS:-32}
 client_processes=${CLIENT_PROCESSES:-1}
@@ -314,10 +314,7 @@ cleanup() {
     fi
 
     if [ "${KEEP_ARTIFACTS:-0}" != 1 ]; then
-        case "$prefix" in
-            /mnt/z/nginx-iocp-bench.*)
-                rm -rf -- "$prefix" ;;
-        esac
+    rm -rf -- "$prefix"
     fi
 }
 

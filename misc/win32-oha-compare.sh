@@ -13,7 +13,7 @@ backend=${3:-iocp}
 candidate_label=${4:-candidate}
 control_label=${5:-control}
 script_dir=$(cd "$(dirname "$0")" && pwd)
-results_root=${RESULTS_DIR:-/mnt/z/nginx-oha-compare-20260819}
+results_root=${RESULTS_DIR:-./nginx-oha-compare}
 repeats=${REPEATS:-6}
 max_attempts=${MAX_ATTEMPTS:-2}
 workers=${WORKER_PROCESSES:-1}
@@ -26,8 +26,8 @@ filter_node=${FILTER_NODE_BIN:-/home/user/bin/node}
 resume=${RESUME:-0}
 
 case "$results_root" in
-    /mnt/z/*) ;;
-    *) echo "RESULTS_DIR must be below /mnt/z" >&2; exit 2 ;;
+    /*) ;;
+    *) echo "RESULTS_DIR must be an absolute path" >&2; exit 2 ;;
 esac
 
 case "$backend" in
@@ -97,7 +97,7 @@ run_one() {
         echo "comparison round $repeat/$repeats: $group " \
              "(attempt $attempt/$max_attempts)" >&2
 
-        if RESULTS_DIR="$attempt_dir" BENCH_SCRATCH_ROOT=/mnt/z \
+        if RESULTS_DIR="$attempt_dir" BENCH_SCRATCH_ROOT="${TMPDIR:-/tmp}" \
            MASTER_PROCESS=on DAEMON=off BENCH_DIRECT_QUIT=0 \
            BENCH_PATHS="$paths" WORKER_PROCESSES="$workers" \
            CONNECTIONS="$connections" CLIENT_PROCESSES="$clients" \

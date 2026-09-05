@@ -142,7 +142,7 @@ wait_down() {
     return 1
 }
 
-prefix=$(mktemp -d /mnt/z/nginx-linux-bench.XXXXXX)
+prefix=$(mktemp -d)
 port=$(get_free_port)
 started=0
 
@@ -154,9 +154,7 @@ cleanup() {
     fi
 
     if [ "${KEEP_ARTIFACTS:-0}" != 1 ]; then
-        case "$prefix" in
-            /mnt/z/nginx-linux-bench.*) rm -rf -- "$prefix" ;;
-        esac
+    rm -rf -- "$prefix"
     fi
 }
 
