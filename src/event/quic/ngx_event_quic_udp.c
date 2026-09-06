@@ -379,6 +379,12 @@ ngx_quic_iocp_dispatch(ngx_listening_t *ls, u_char *data, size_t size,
 
     lc = ls->connection;
 
+    if (lc == NULL || lc->fd == (ngx_socket_t) -1) {
+        ngx_log_debug0(NGX_LOG_DEBUG_EVENT, &ls->log, 0,
+                       "dropping QUIC datagram for closed listener");
+        return;
+    }
+
     if (ngx_quic_get_packet_dcid(&ls->log, data, size, &key) != NGX_OK) {
         return;
     }

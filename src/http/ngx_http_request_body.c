@@ -1126,19 +1126,9 @@ ngx_http_test_expect(ngx_http_request_t *r)
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "send 100 Continue");
 
-#if (NGX_HAVE_IOCP)
-    if (ngx_event_flags & NGX_USE_IOCP_EVENT) {
-        n = ngx_wsasend(r->connection,
-                        (u_char *) "HTTP/1.1 100 Continue" CRLF CRLF,
-                        sizeof("HTTP/1.1 100 Continue" CRLF CRLF) - 1);
-
-    } else
-#endif
-    {
-        n = r->connection->send(r->connection,
-                                (u_char *) "HTTP/1.1 100 Continue" CRLF CRLF,
-                                sizeof("HTTP/1.1 100 Continue" CRLF CRLF) - 1);
-    }
+    n = r->connection->send(r->connection,
+                            (u_char *) "HTTP/1.1 100 Continue" CRLF CRLF,
+                            sizeof("HTTP/1.1 100 Continue" CRLF CRLF) - 1);
 
     if (n == sizeof("HTTP/1.1 100 Continue" CRLF CRLF) - 1) {
         return NGX_OK;

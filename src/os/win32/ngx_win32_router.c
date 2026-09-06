@@ -3000,7 +3000,8 @@ ngx_win32_router_find_worker(ngx_pid_t pid, ngx_uint_t slot,
     for (i = 0; i < ngx_win32_router_ready_worker_n; i++) {
         worker = ngx_win32_router_ready_workers[i];
 
-        if (worker->ready && worker->pid == pid && worker->slot == slot
+        if (worker->ready && worker->active && worker->pid == pid
+            && worker->slot == slot
             && worker->generation == generation)
         {
             return worker;
@@ -3020,7 +3021,7 @@ ngx_win32_router_find_quic_worker(ngx_uint_t slot, ngx_uint_t generation)
     for (i = 0; i < ngx_win32_router_ready_worker_n; i++) {
         worker = ngx_win32_router_ready_workers[i];
 
-        if (worker->ready && worker->slot == slot
+        if (worker->ready && worker->active && worker->slot == slot
             && (worker->generation & 0xffff) == generation)
         {
             return worker;
