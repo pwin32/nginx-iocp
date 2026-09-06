@@ -16,6 +16,7 @@
 #define NGX_IOCP_SHUTDOWN_WAIT  5000
 #define NGX_IOCP_MAX_ACCEPTS    1024
 #define NGX_IOCP_MAX_UDP_RECV   256
+#define NGX_IOCP_EXTENSION_CACHE_SIZE  4
 
 
 typedef struct {
@@ -37,6 +38,22 @@ typedef struct {
     volatile LONG  posted;
     unsigned       selected:1;
 } ngx_iocp_write_notify_op_t;
+
+
+typedef struct {
+    GUID                       provider;
+    int                        family;
+    int                        type;
+    int                        protocol;
+    LPFN_ACCEPTEX              acceptex;
+    LPFN_GETACCEPTEXSOCKADDRS  getacceptexsockaddrs;
+    LPFN_CONNECTEX             connectex;
+    LPFN_TRANSMITFILE          transmitfile;
+    LPFN_TRANSMITPACKETS       transmitpackets;
+    LPFN_WSARECVMSG            recvmsg;
+    LPFN_WSASENDMSG            sendmsg;
+    unsigned                   valid:1;
+} ngx_iocp_extension_cache_t;
 
 
 static ngx_int_t ngx_iocp_init(ngx_cycle_t *cycle, ngx_msec_t timer);
@@ -65,6 +82,12 @@ static void ngx_iocp_finish_op(ngx_iocp_op_t *op, ngx_uint_t cleanup);
 static void ngx_iocp_set_log(ngx_iocp_owner_t *owner, ngx_log_t *log);
 static void ngx_iocp_query_extension(ngx_iocp_owner_t *owner, GUID *guid,
     void *target, DWORD size);
+static ngx_uint_t ngx_iocp_extension_cache_match(
+    ngx_iocp_extension_cache_t *cache, WSAPROTOCOL_INFO *info);
+static void ngx_iocp_extension_cache_copy(ngx_iocp_owner_t *owner,
+    ngx_iocp_extension_cache_t *cache);
+static void ngx_iocp_extension_cache_save(ngx_iocp_owner_t *owner,
+    WSAPROTOCOL_INFO *info);
 static void *ngx_iocp_create_conf(ngx_cycle_t *cycle);
 static char *ngx_iocp_init_conf(ngx_cycle_t *cycle, void *conf);
 
@@ -161,6 +184,11 @@ static ngx_atomic_t ngx_iocp_notifications;
 static ngx_msec_t   ngx_iocp_timer_resolution;
 static ngx_event_t  ngx_iocp_notify_event;
 static u_char        ngx_iocp_zero_byte;
+static ngx_iocp_extension_cache_t ngx_iocp_extension_cache[
+    NGX_IOCP_EXTENSION_CACHE_SIZE];
+static CRITICAL_SECTION ngx_iocp_extension_cache_lock;
+static ngx_uint_t ngx_iocp_extension_cache_lock_initialized;
+static ngx_uint_t ngx_iocp_extension_cache_next;
 
 static GUID  iocp_acceptex_guid = WSAID_ACCEPTEX;
 static GUID  iocp_getacceptexsockaddrs_guid = WSAID_GETACCEPTEXSOCKADDRS;
@@ -186,6 +214,11 @@ ngx_iocp_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         ngx_iocp_generation = 0;
         ngx_iocp_pending = 0;
         ngx_iocp_notifications = 0;
+        ngx_memzero(ngx_iocp_extension_cache,
+                    sizeof(ngx_iocp_extension_cache));
+        ngx_iocp_extension_cache_next = 0;
+        InitializeCriticalSection(&ngx_iocp_extension_cache_lock);
+        ngx_iocp_extension_cache_lock_initialized = 1;
     }
 
     ngx_memzero(&ngx_iocp_notify_event, sizeof(ngx_event_t));
@@ -290,6 +323,11 @@ ngx_iocp_done(ngx_cycle_t *cycle)
     if (iocp && CloseHandle(iocp) == 0) {
         ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                       "iocp CloseHandle() failed");
+    }
+
+    if (ngx_iocp_extension_cache_lock_initialized) {
+        DeleteCriticalSection(&ngx_iocp_extension_cache_lock);
+        ngx_iocp_extension_cache_lock_initialized = 0;
     }
 
     iocp = NULL;
@@ -397,7 +435,52 @@ ngx_iocp_associate(ngx_iocp_owner_t *owner)
 void
 ngx_iocp_load_extensions(ngx_iocp_owner_t *owner)
 {
+    int                         len;
+    ngx_uint_t                  i;
+    WSAPROTOCOL_INFO            info;
+
     if (!owner->socket || owner->handle == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    len = sizeof(info);
+
+    if (getsockopt((SOCKET) owner->handle, SOL_SOCKET, SO_PROTOCOL_INFO,
+                   (char *) &info, &len) == 0
+        && ngx_iocp_extension_cache_lock_initialized)
+    {
+        EnterCriticalSection(&ngx_iocp_extension_cache_lock);
+
+        for (i = 0; i < NGX_IOCP_EXTENSION_CACHE_SIZE; i++) {
+            if (ngx_iocp_extension_cache_match(
+                    &ngx_iocp_extension_cache[i], &info))
+            {
+                ngx_iocp_extension_cache_copy(owner,
+                                              &ngx_iocp_extension_cache[i]);
+                LeaveCriticalSection(&ngx_iocp_extension_cache_lock);
+                return;
+            }
+        }
+
+        ngx_iocp_query_extension(owner, &iocp_acceptex_guid, &owner->acceptex,
+                                 sizeof(owner->acceptex));
+        ngx_iocp_query_extension(owner, &iocp_getacceptexsockaddrs_guid,
+                                 &owner->getacceptexsockaddrs,
+                                 sizeof(owner->getacceptexsockaddrs));
+        ngx_iocp_query_extension(owner, &iocp_connectex_guid,
+                                 &owner->connectex, sizeof(owner->connectex));
+        ngx_iocp_query_extension(owner, &iocp_transmitfile_guid,
+                                 &owner->transmitfile,
+                                 sizeof(owner->transmitfile));
+        ngx_iocp_query_extension(owner, &iocp_transmitpackets_guid,
+                                 &owner->transmitpackets,
+                                 sizeof(owner->transmitpackets));
+        ngx_iocp_query_extension(owner, &iocp_wsarecvmsg_guid, &owner->recvmsg,
+                                 sizeof(owner->recvmsg));
+        ngx_iocp_query_extension(owner, &iocp_wsasendmsg_guid, &owner->sendmsg,
+                                 sizeof(owner->sendmsg));
+        ngx_iocp_extension_cache_save(owner, &info);
+        LeaveCriticalSection(&ngx_iocp_extension_cache_lock);
         return;
     }
 
@@ -417,6 +500,56 @@ ngx_iocp_load_extensions(ngx_iocp_owner_t *owner)
                              sizeof(owner->recvmsg));
     ngx_iocp_query_extension(owner, &iocp_wsasendmsg_guid, &owner->sendmsg,
                              sizeof(owner->sendmsg));
+}
+
+
+static ngx_uint_t
+ngx_iocp_extension_cache_match(ngx_iocp_extension_cache_t *cache,
+    WSAPROTOCOL_INFO *info)
+{
+    return cache->valid
+           && cache->family == info->iAddressFamily
+           && cache->type == info->iSocketType
+           && cache->protocol == info->iProtocol
+           && ngx_memcmp(&cache->provider, &info->ProviderId,
+                         sizeof(GUID)) == 0;
+}
+
+
+static void
+ngx_iocp_extension_cache_copy(ngx_iocp_owner_t *owner,
+    ngx_iocp_extension_cache_t *cache)
+{
+    owner->acceptex = cache->acceptex;
+    owner->getacceptexsockaddrs = cache->getacceptexsockaddrs;
+    owner->connectex = cache->connectex;
+    owner->transmitfile = cache->transmitfile;
+    owner->transmitpackets = cache->transmitpackets;
+    owner->recvmsg = cache->recvmsg;
+    owner->sendmsg = cache->sendmsg;
+}
+
+
+static void
+ngx_iocp_extension_cache_save(ngx_iocp_owner_t *owner,
+    WSAPROTOCOL_INFO *info)
+{
+    ngx_iocp_extension_cache_t  *cache;
+
+    cache = &ngx_iocp_extension_cache[
+        ngx_iocp_extension_cache_next++ % NGX_IOCP_EXTENSION_CACHE_SIZE];
+    cache->provider = info->ProviderId;
+    cache->family = info->iAddressFamily;
+    cache->type = info->iSocketType;
+    cache->protocol = info->iProtocol;
+    cache->acceptex = owner->acceptex;
+    cache->getacceptexsockaddrs = owner->getacceptexsockaddrs;
+    cache->connectex = owner->connectex;
+    cache->transmitfile = owner->transmitfile;
+    cache->transmitpackets = owner->transmitpackets;
+    cache->recvmsg = owner->recvmsg;
+    cache->sendmsg = owner->sendmsg;
+    cache->valid = 1;
 }
 
 
