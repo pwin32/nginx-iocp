@@ -21,6 +21,7 @@ permissions:
 jobs:
   release:
     name: Build and Attest Release
+    if: github.event_name != 'workflow_dispatch'
     runs-on: windows-2022
     timeout-minutes: 60
 
@@ -304,3 +305,45 @@ jobs:
           SHA256 checksums are in `${{ env.PACKAGE_NAME }}.zip.sha256`.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update_release_notes:
+    name: Update v1.31.5 Release Notes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout release notes
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Update the verified replacement release
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        api=https://api.github.com/repos/pwin32/nginx-iocp
+        headers=(-H "Authorization: Bearer $GITHUB_TOKEN"
+                 -H 'Accept: application/vnd.github+json')
+
+        curl --fail --silent --show-error "${headers[@]}" \
+          "$api/git/ref/tags/v1.31.5" |
+          jq -e '.object.sha == "ec85f33299520419224cc7e7af8f1c69f656c270"'
+
+        curl --fail --silent --show-error "${headers[@]}" \
+          "$api/releases/383425758" |
+          jq -e '.tag_name == "v1.31.5" and
+            any(.assets[];
+              .name == "nginx-iocp-1.31.5-win64.zip" and
+              .digest == "sha256:068019603048cd2a0fe93d8654e75cbff2fd9d85128e1ddc54684f89f326962c")'
+
+        jq -n --rawfile body .github/release-notes-v1.31.5.md \
+          '{body: $body,
+            target_commitish: "c4e9c65fe556da4ef575344df2dc2a59bf3efd08",
+            make_latest: "true"}' |
+          curl --fail --silent --show-error -X PATCH "${headers[@]}" \
+            -H 'Content-Type: application/json' --data-binary @- \
+            "$api/releases/383425758" |
+          jq '{id, tag_name, target_commitish, html_url}'
